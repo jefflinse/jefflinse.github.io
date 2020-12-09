@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Language" content="en">
+
+    <meta name="author" content="Jeff Linse">
+    <meta name="description" content="How to encrypt a GitHub secret in Golang">
+    <meta name="keywords" content="jeff,linse,jefflinse,jlinse,software,developer,personal,box">
+
+    <meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Encrypting GitHub Secrets using Go"/>
+<meta name="twitter:description" content="How to encrypt a GitHub secret in Golang"/>
+
+    <meta property="og:title" content="Encrypting GitHub Secrets using Go" />
+<meta property="og:description" content="How to encrypt a GitHub secret in Golang" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://jefflinse.io/posts/encrypting-github-secrets-using-go/" />
+<meta property="article:published_time" content="2020-12-08T19:50:00-08:00" />
+<meta property="article:modified_time" content="2020-12-08T19:50:00-08:00" />
+
+
+    <title>
+  Encrypting GitHub Secrets using Go · Jeff Linse
+</title>
+
+    
+      <link rel="canonical" href="https://jefflinse.io/posts/encrypting-github-secrets-using-go/">
+    
+
+    <link href="https://fonts.googleapis.com/css?family=Lato:400,700%7CMerriweather:300,700%7CSource+Code+Pro:400,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fork-awesome@1.1.7/css/fork-awesome.min.css" integrity="sha256-gsmEoJAws/Kd3CjuOQzLie5Q3yshhvmo7YNtBG7aaEY=" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" integrity="sha256-l85OmPOjvil/SOvVt3HnSSjzF1TUMyT9eV0c2BzEGzU=" crossorigin="anonymous" />
+
+    
+      
+      
+      <link rel="stylesheet" href="/css/coder.min.f01c647a0d25b40da992a37c3376291185eed8a50ced8c26cc2c0bcfe38c97df.css" integrity="sha256-8Bxkeg0ltA2pkqN8M3YpEYXu2KUM7YwmzCwLz&#43;OMl98=" crossorigin="anonymous" media="screen" />
+    
+
+    
+
+    
+
+    
+
+    
+      
+      
+        
+        <link rel="stylesheet" href="/scss/overrides.min.4cf1125e2cf0f45662eb32df74d18138bf69299b51cd2253921297048f6ec4cd.css" integrity="sha256-TPESXizw9FZi6zLfdNGBOL9pKZtRzSJTkhKXBI9uxM0=" crossorigin="anonymous" media="screen" />
+      
+    
+
+    <link rel="icon" type="image/png" href="/images/favicon-32x32.png" sizes="32x32">
+    <link rel="icon" type="image/png" href="/images/favicon-16x16.png" sizes="16x16">
+
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+
+    
+      <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js" crossorigin="anonymous"></script>
+    
+
+    <meta name="generator" content="Hugo 0.78.2" />
+  </head>
+
+  
+  
+  <body class="colorscheme-light"
+        onload=" twemoji.parse(document.body); "
+  >
+    
+
+    <main class="wrapper">
+      <nav class="navigation">
+  <section class="container">
+    <a class="navigation-title" href="/">
+      Jeff Linse
+    </a>
+    
+      <input type="checkbox" id="menu-toggle" />
+      <label class="menu-button float-right" for="menu-toggle">
+        <i class="fa fa-bars fa-fw" aria-hidden="true"></i>
+      </label>
+      <ul class="navigation-list">
+        
+          
+            <li class="navigation-item">
+              <a class="navigation-link" href="/projects/">Projects</a>
+            </li>
+          
+            <li class="navigation-item">
+              <a class="navigation-link" href="/posts/">Blog</a>
+            </li>
+          
+        
+        
+      </ul>
+    
+  </section>
+</nav>
+
+
+      <div class="content">
+        
+  <section class="container post">
+    <article>
+      <header>
+        <div class="post-title">
+          <h1 class="title">Encrypting GitHub Secrets using Go</h1>
+        </div>
+        <div class="post-meta">
+          <div class="date">
+            <span class="posted-on">
+              <i class="fa fa-calendar" aria-hidden="true"></i>
+              <time datetime='2020-12-08T19:50:00-08:00'>
+                December 8, 2020
+              </time>
+            </span>
+            <span class="reading-time">
+              <i class="fa fa-clock-o" aria-hidden="true"></i>
+              4-minute read
+            </span>
+          </div>
+          
+          
+          
+        </div>
+      </header>
+
+      <div>
+        
+        <blockquote>
+<p>Want to start encrypting right away? Skip to <a href="https://github.com/jefflinse/githubsecret/blob/main/nacl.go">GitHub</a> or <a href="#package">install the package</a>.</p>
+</blockquote>
+<p>When programatically storing a secret value in a repository for use in a GitHub Actions workflow, you must first <a href="https://docs.github.com/en/free-pro-team@latest/rest/reference/actions#create-or-update-a-repository-secret">encrypt the value</a> using libsodium. If you want to do this in Golang, there are basically two choices: bind the libsodium C library, for which there are Go packages available<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>, or use APIs provided by the <code>golang.org/x/crypto</code> package.</p>
+<p>In this article I&rsquo;ll demonstrate how to encrypt your GitHub secrets in Go using the latter approach, without the need to bind libsodium.</p>
+<p>The high-level steps for programatically storing a GitHub secret are:</p>
+<ol>
+<li>Obtain the public key for the repository<sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup> in which you want to store the secret.</li>
+<li>Encrypt your secret value using that public key.</li>
+<li>Set the encrypted secret in your repository.</li>
+</ol>
+<p>This article assumes you already have the necessary access permissions for creating secrets on your repository and that you&rsquo;re comfortable calling REST endpoints from Go, so focus will be on the encryption. However, a full end-to-end example of this workflow is available on <a href="https://github.com/jefflinse/githubsecret/tree/main/examples/putsecret">GitHub</a>.</p>
+<h2 id="obtaining-the-public-key">Obtaining The Public Key</h2>
+<p>Before we can do anything, we need to <a href="https://docs.github.com/en/free-pro-team@latest/rest/reference/actions#get-a-repository-public-key">get the repository&rsquo;s public key</a>, which we&rsquo;ll use when encrypting secret values.</p>
+<p>GitHub returns a JSON response containing the <code>key</code> and <code>key_id</code>. Hang on to both of these &ndash; we&rsquo;ll need the former for encrypting secret values and the latter for storing them.</p>
+<h2 id="encrypting-the-secret">Encrypting The Secret</h2>
+<p>GitHub uses <a href="https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes">&ldquo;sealed box&rdquo; encryption</a> from libsodium to encrypt and decrypt secrets. The corresponding functionality we need for encrypting secrets is in two Go packages:</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">go get golang.org/x/crypto/blake2b
+</code></pre></div><div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">go get golang.org/x/crypto/nacl/box
+</code></pre></div><p>The <code>blake2b</code> package contains cryptographic hashing functionality needed for combining public keys into a nonce, and the <code>nacl/box</code> package contains the NaCl sealed box APIs we&rsquo;ll use to encrypt our secret values.</p>
+<p>On to the encryption function. We want a function, let&rsquo;s call it <code>naclEncrypt()</code>, that will take the repo&rsquo;s public key and secret value to be encrypted and return the encrypted content.</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#007020;font-weight:bold">func</span> <span style="color:#06287e">naclEncrypt</span>(recipientPublicKey <span style="color:#902000">string</span>, content <span style="color:#902000">string</span>) (<span style="color:#902000">string</span>, <span style="color:#902000">error</span>) {
+
+}
+</code></pre></div><p>Let&rsquo;s implement it piece by piece. For clarity, I&rsquo;ll omit most error handling code as we examine each step in detail.</p>
+<h3 id="1-decode-the-public-key">1. Decode The Public Key</h3>
+<p>The public key we got from GitHub is base64-encoded and we must decode it. We&rsquo;ll also need its contents as an array (not a slice), thus we copy the bytes into a <code>[32]byte</code>:</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// decode the provided public key from base64
+</span><span style="color:#60a0b0;font-style:italic"></span>b, _ <span style="color:#666">:=</span> base64.StdEncoding.<span style="color:#06287e">DecodeString</span>(recipientPublicKey)
+recipientKey <span style="color:#666">:=</span> <span style="color:#007020">new</span>([<span style="color:#40a070">32</span>]<span style="color:#902000">byte</span>)
+<span style="color:#007020">copy</span>(recipientKey[:], b)
+</code></pre></div><h3 id="2-generate-a-key-pair">2. Generate A Key Pair</h3>
+<p>Next, we need to create a 24-byte nonce &ndash; a one-time value that&rsquo;s unique for each message we encrypt. We can&rsquo;t just use any random value here; the nonce needs to be a hash of our repository&rsquo;s public key and a another public key we generate randomly. We already have the former, so our next step is to generate a random key pair. The <code>box</code> package provides this mechanism:</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// create an ephemeral key pair
+</span><span style="color:#60a0b0;font-style:italic"></span>pubKey, privKey, _ <span style="color:#666">:=</span> box.<span style="color:#06287e">GenerateKey</span>(rand.Reader)
+</code></pre></div><h3 id="3-create-a-nonce">3. Create A Nonce</h3>
+<p>With our newly generated public key we can create our nonce. For this we use the <code>blake2b</code> package to hash together the two public keys. The nonce must be a an array, so just as with our public key, we copy the bytes from the hash&rsquo;s resulting slice into a <code>[24]byte</code>:</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// create the nonce by hashing together the two public keys
+</span><span style="color:#60a0b0;font-style:italic"></span>nonceHash, _ <span style="color:#666">:=</span> blake2b.<span style="color:#06287e">New</span>(<span style="color:#40a070">24</span>, <span style="color:#007020;font-weight:bold">nil</span>)
+nonceHash.<span style="color:#06287e">Write</span>(pubKey[:])
+nonceHash.<span style="color:#06287e">Write</span>(recipientKey[:])
+nonce <span style="color:#666">:=</span> <span style="color:#007020">new</span>([<span style="color:#40a070">24</span>]<span style="color:#902000">byte</span>)
+<span style="color:#007020">copy</span>(nonce[:], nonceHash.<span style="color:#06287e">Sum</span>(<span style="color:#007020;font-weight:bold">nil</span>))
+</code></pre></div><h3 id="4-encrypt-the-content">4. Encrypt The Content</h3>
+<p>Now we&rsquo;re ready to encrypt our secret.</p>
+<p>The first argument to <code>box.Seal()</code> specifies a slice that the encrypted content will be appended to. Protocol requires us to prepend the ephemeral public key to our encrypted secret data, so we&rsquo;ll pass it as the first argument.</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// begin the output with the ephemeral public key and append the encrypted content
+</span><span style="color:#60a0b0;font-style:italic"></span>out <span style="color:#666">:=</span> box.<span style="color:#06287e">Seal</span>(pubKey[:], []<span style="color:#007020">byte</span>(content), nonce, recipientKey, privKey)
+</code></pre></div><p>The remaining arguments are the secret content to be encrypted, the nonce, the recipient public key, and the generated private key.</p>
+<p>Finally, we just need to base64-encode the output:</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// base64-encode the final output
+</span><span style="color:#60a0b0;font-style:italic"></span><span style="color:#007020;font-weight:bold">return</span> base64.StdEncoding.<span style="color:#06287e">EncodeToString</span>(out), <span style="color:#007020;font-weight:bold">nil</span>
+</code></pre></div><p>Done. The complete implementation can be found <a href="https://github.com/jefflinse/githubsecret/blob/main/nacl.go">here</a>.</p>
+<h2 id="storing-the-secret">Storing The Secret</h2>
+<p>Now that we&rsquo;ve encrypted our secret, we&rsquo;re ready to <a href="https://developer.github.com/v3/actions/secrets/#create-or-update-a-repository-secret">store it</a>. In the request body, specify the <code>encrypted_value</code> and the <code>key_id</code> of the public key we obtained from the repository.</p>
+<h2 id="package">Package</h2>
+<p>This code is available as a Go package on <a href="https://github.com/jefflinse/githubsecret">GitHub</a>.</p>
+<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">go get github.com/jefflinse/githubsecret
+</code></pre></div><div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#007020;font-weight:bold">import</span> (
+    <span style="color:#4070a0">&#34;fmt&#34;</span>
+    <span style="color:#4070a0">&#34;log&#34;</span>
+    <span style="color:#4070a0">&#34;github.com/jefflinse/githubsecret&#34;</span>
+)
+
+<span style="color:#007020;font-weight:bold">func</span> <span style="color:#06287e">main</span>() {
+    publicKey <span style="color:#666">:=</span> <span style="color:#4070a0">&#34;jpEqkF3JrT+00cEQdpTAUnVWYdJJpkbghDSTndgRJKg=&#34;</span>
+    secret <span style="color:#666">:=</span> <span style="color:#4070a0">&#34;my super sensitive value&#34;</span>
+    encrypted, err <span style="color:#666">:=</span> githubsecret.<span style="color:#06287e">Encrypt</span>(publicKey, secret)
+    <span style="color:#007020;font-weight:bold">if</span> err <span style="color:#666">!=</span> <span style="color:#007020;font-weight:bold">nil</span> {
+        log.<span style="color:#06287e">Fatal</span>(err)
+    }
+
+    fmt.<span style="color:#06287e">Println</span>(encrypted)
+}
+</code></pre></div><section class="footnotes" role="doc-endnotes">
+<hr>
+<ol>
+<li id="fn:1" role="doc-endnote">
+<p><a href="https://github.com/GoKillers/libsodium-go">libsodium-go</a> and <a href="https://github.com/jamesruan/sodium">Sodium</a>, from <a href="https://libsodium.gitbook.io/doc/bindings_for_other_languages">libsodium&rsquo;s &ldquo;Bindings for other languages&rdquo;</a> <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+<li id="fn:2" role="doc-endnote">
+<p>GitHub secrets can also be set at the organization level. The endpoints differ slightly but the workflow is the same. <a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
+</ol>
+</section>
+
+      </div>
+
+
+      <footer>
+        
+
+
+        
+        
+        
+      </footer>
+    </article>
+
+    
+  </section>
+
+      </div>
+
+      
+  <footer class="footer">
+    <section class="container">
+      
+      
+        ©
+        
+        2020
+         Jeff Linse 
+      
+      
+         · 
+        Powered by <a href="https://gohugo.io/">Hugo</a> & <a href="https://github.com/luizdepra/hugo-coder/">Coder</a>.
+      
+      
+    </section>
+  </footer>
+
+
+    </main>
+
+    
+
+    
+
+    
+<script type="application/javascript">
+var doNotTrack = false;
+if (!doNotTrack) {
+	(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+	(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+	m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+	})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+	ga('create', 'G-X3LFE83NPE', 'auto');
+	
+	ga('send', 'pageview');
+}
+</script>
+
+
+    
+
+    
+
+    
+  </body>
+
+</html>

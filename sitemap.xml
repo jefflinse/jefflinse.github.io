@@ -3,19 +3,26 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>https://jefflinse.io/authors/</loc>
-  </url>
-  
-  <url>
     <loc>https://jefflinse.io/posts/</loc>
+    <lastmod>2020-12-08T19:50:00-08:00</lastmod>
   </url>
   
   <url>
-    <loc>https://jefflinse.io/categories/</loc>
+    <loc>https://jefflinse.io/posts/encrypting-github-secrets-using-go/</loc>
+    <lastmod>2020-12-08T19:50:00-08:00</lastmod>
   </url>
   
   <url>
     <loc>https://jefflinse.io/</loc>
+    <lastmod>2020-12-08T19:50:00-08:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://jefflinse.io/authors/</loc>
+  </url>
+  
+  <url>
+    <loc>https://jefflinse.io/categories/</loc>
   </url>
   
   <url>

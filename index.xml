@@ -5,7 +5,18 @@
     <link>https://jefflinse.io/</link>
     <description>Recent content on Jeff Linse</description>
     <generator>Hugo -- gohugo.io</generator>
-    <language>en</language><atom:link href="https://jefflinse.io/index.xml" rel="self" type="application/rss+xml" />
+    <language>en</language>
+    <lastBuildDate>Tue, 08 Dec 2020 19:50:00 -0800</lastBuildDate><atom:link href="https://jefflinse.io/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Encrypting GitHub Secrets using Go</title>
+      <link>https://jefflinse.io/posts/encrypting-github-secrets-using-go/</link>
+      <pubDate>Tue, 08 Dec 2020 19:50:00 -0800</pubDate>
+      
+      <guid>https://jefflinse.io/posts/encrypting-github-secrets-using-go/</guid>
+      <description>Want to start encrypting right away? Skip to GitHub or install the package.
+ When programatically storing a secret value in a repository for use in a GitHub Actions workflow, you must first encrypt the value using libsodium. If you want to do this in Golang, there are basically two choices: bind the libsodium C library, for which there are Go packages available1, or use APIs provided by the golang.</description>
+    </item>
+    
     <item>
       <title>Projects</title>
       <link>https://jefflinse.io/projects/</link>
