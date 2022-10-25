@@ -65,7 +65,7 @@
       <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js" crossorigin="anonymous"></script>
     
 
-    <meta name="generator" content="Hugo 0.83.1" />
+    <meta name="generator" content="Hugo 0.104.3" />
   </head>
 
   
@@ -132,74 +132,74 @@
 <p>GitHub returns a JSON response containing the <code>key</code> and <code>key_id</code>. Hang on to both of these &ndash; we&rsquo;ll need the former for encrypting secret values and the latter for storing them.</p>
 <h2 id="encrypting-the-secret">Encrypting The Secret</h2>
 <p>GitHub uses <a href="https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes">&ldquo;sealed box&rdquo; encryption</a> from libsodium to encrypt and decrypt secrets. The corresponding functionality we need for encrypting secrets is in two Go packages:</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">go get golang.org/x/crypto/blake2b
-</code></pre></div><div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">go get golang.org/x/crypto/nacl/box
-</code></pre></div><p>The <code>blake2b</code> package contains cryptographic hashing functionality needed for combining public keys into a nonce, and the <code>nacl/box</code> package contains the NaCl sealed box APIs we&rsquo;ll use to encrypt our secret values.</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>go get golang.org/x/crypto/blake2b
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>go get golang.org/x/crypto/nacl/box
+</span></span></code></pre></div><p>The <code>blake2b</code> package contains cryptographic hashing functionality needed for combining public keys into a nonce, and the <code>nacl/box</code> package contains the NaCl sealed box APIs we&rsquo;ll use to encrypt our secret values.</p>
 <p>On to the encryption function. We want a function, let&rsquo;s call it <code>naclEncrypt()</code>, that will take the repo&rsquo;s public key and secret value to be encrypted and return the encrypted content.</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#007020;font-weight:bold">func</span> <span style="color:#06287e">naclEncrypt</span>(recipientPublicKey <span style="color:#902000">string</span>, content <span style="color:#902000">string</span>) (<span style="color:#902000">string</span>, <span style="color:#902000">error</span>) {
-
-}
-</code></pre></div><p>Let&rsquo;s implement it piece by piece. For clarity, I&rsquo;ll omit most error handling code as we examine each step in detail.</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">func</span> <span style="color:#06287e">naclEncrypt</span>(recipientPublicKey <span style="color:#902000">string</span>, content <span style="color:#902000">string</span>) (<span style="color:#902000">string</span>, <span style="color:#902000">error</span>) {
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><p>Let&rsquo;s implement it piece by piece. For clarity, I&rsquo;ll omit most error handling code as we examine each step in detail.</p>
 <h3 id="1-decode-the-public-key">1. Decode The Public Key</h3>
 <p>The public key we got from GitHub is base64-encoded and we must decode it. We&rsquo;ll also need its contents as an array (not a slice), thus we copy the bytes into a <code>[32]byte</code>:</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// decode the provided public key from base64
-</span><span style="color:#60a0b0;font-style:italic"></span>b, _ <span style="color:#666">:=</span> base64.StdEncoding.<span style="color:#06287e">DecodeString</span>(recipientPublicKey)
-recipientKey <span style="color:#666">:=</span> <span style="color:#007020">new</span>([<span style="color:#40a070">32</span>]<span style="color:#902000">byte</span>)
-<span style="color:#007020">copy</span>(recipientKey[:], b)
-</code></pre></div><h3 id="2-generate-a-key-pair">2. Generate A Key Pair</h3>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic">// decode the provided public key from base64
+</span></span></span><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic"></span>b, _ <span style="color:#666">:=</span> base64.StdEncoding.<span style="color:#06287e">DecodeString</span>(recipientPublicKey)
+</span></span><span style="display:flex;"><span>recipientKey <span style="color:#666">:=</span> <span style="color:#007020">new</span>([<span style="color:#40a070">32</span>]<span style="color:#902000">byte</span>)
+</span></span><span style="display:flex;"><span><span style="color:#007020">copy</span>(recipientKey[:], b)
+</span></span></code></pre></div><h3 id="2-generate-a-key-pair">2. Generate A Key Pair</h3>
 <p>Next, we need to create a 24-byte nonce &ndash; a one-time value that&rsquo;s unique for each message we encrypt. We can&rsquo;t just use any random value here; the nonce needs to be a hash of our repository&rsquo;s public key and a another public key we generate randomly. We already have the former, so our next step is to generate a random key pair. The <code>box</code> package provides this mechanism:</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// create an ephemeral key pair
-</span><span style="color:#60a0b0;font-style:italic"></span>pubKey, privKey, _ <span style="color:#666">:=</span> box.<span style="color:#06287e">GenerateKey</span>(rand.Reader)
-</code></pre></div><h3 id="3-create-a-nonce">3. Create A Nonce</h3>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic">// create an ephemeral key pair
+</span></span></span><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic"></span>pubKey, privKey, _ <span style="color:#666">:=</span> box.<span style="color:#06287e">GenerateKey</span>(rand.Reader)
+</span></span></code></pre></div><h3 id="3-create-a-nonce">3. Create A Nonce</h3>
 <p>With our newly generated public key we can create our nonce. For this we use the <code>blake2b</code> package to hash together the two public keys. The nonce must be a an array, so just as with our public key, we copy the bytes from the hash&rsquo;s resulting slice into a <code>[24]byte</code>:</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// create the nonce by hashing together the two public keys
-</span><span style="color:#60a0b0;font-style:italic"></span>nonceHash, _ <span style="color:#666">:=</span> blake2b.<span style="color:#06287e">New</span>(<span style="color:#40a070">24</span>, <span style="color:#007020;font-weight:bold">nil</span>)
-nonceHash.<span style="color:#06287e">Write</span>(pubKey[:])
-nonceHash.<span style="color:#06287e">Write</span>(recipientKey[:])
-nonce <span style="color:#666">:=</span> <span style="color:#007020">new</span>([<span style="color:#40a070">24</span>]<span style="color:#902000">byte</span>)
-<span style="color:#007020">copy</span>(nonce[:], nonceHash.<span style="color:#06287e">Sum</span>(<span style="color:#007020;font-weight:bold">nil</span>))
-</code></pre></div><h3 id="4-encrypt-the-content">4. Encrypt The Content</h3>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic">// create the nonce by hashing together the two public keys
+</span></span></span><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic"></span>nonceHash, _ <span style="color:#666">:=</span> blake2b.<span style="color:#06287e">New</span>(<span style="color:#40a070">24</span>, <span style="color:#007020;font-weight:bold">nil</span>)
+</span></span><span style="display:flex;"><span>nonceHash.<span style="color:#06287e">Write</span>(pubKey[:])
+</span></span><span style="display:flex;"><span>nonceHash.<span style="color:#06287e">Write</span>(recipientKey[:])
+</span></span><span style="display:flex;"><span>nonce <span style="color:#666">:=</span> <span style="color:#007020">new</span>([<span style="color:#40a070">24</span>]<span style="color:#902000">byte</span>)
+</span></span><span style="display:flex;"><span><span style="color:#007020">copy</span>(nonce[:], nonceHash.<span style="color:#06287e">Sum</span>(<span style="color:#007020;font-weight:bold">nil</span>))
+</span></span></code></pre></div><h3 id="4-encrypt-the-content">4. Encrypt The Content</h3>
 <p>Now we&rsquo;re ready to encrypt our secret.</p>
 <p>The first argument to <code>box.Seal()</code> specifies a slice that the encrypted content will be appended to. Protocol requires us to prepend the ephemeral public key to our encrypted secret data, so we&rsquo;ll pass it as the first argument.</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// begin the output with the ephemeral public key and append the encrypted content
-</span><span style="color:#60a0b0;font-style:italic"></span>out <span style="color:#666">:=</span> box.<span style="color:#06287e">Seal</span>(pubKey[:], []<span style="color:#007020">byte</span>(content), nonce, recipientKey, privKey)
-</code></pre></div><p>The remaining arguments are the secret content to be encrypted, the nonce, the recipient public key, and the generated private key.</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic">// begin the output with the ephemeral public key and append the encrypted content
+</span></span></span><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic"></span>out <span style="color:#666">:=</span> box.<span style="color:#06287e">Seal</span>(pubKey[:], []<span style="color:#007020">byte</span>(content), nonce, recipientKey, privKey)
+</span></span></code></pre></div><p>The remaining arguments are the secret content to be encrypted, the nonce, the recipient public key, and the generated private key.</p>
 <p>Finally, we just need to base64-encode the output:</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#60a0b0;font-style:italic">// base64-encode the final output
-</span><span style="color:#60a0b0;font-style:italic"></span><span style="color:#007020;font-weight:bold">return</span> base64.StdEncoding.<span style="color:#06287e">EncodeToString</span>(out), <span style="color:#007020;font-weight:bold">nil</span>
-</code></pre></div><p>Done. The complete implementation can be found <a href="https://github.com/jefflinse/githubsecret/blob/main/nacl.go">here</a>.</p>
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic">// base64-encode the final output
+</span></span></span><span style="display:flex;"><span><span style="color:#60a0b0;font-style:italic"></span><span style="color:#007020;font-weight:bold">return</span> base64.StdEncoding.<span style="color:#06287e">EncodeToString</span>(out), <span style="color:#007020;font-weight:bold">nil</span>
+</span></span></code></pre></div><p>Done. The complete implementation can be found <a href="https://github.com/jefflinse/githubsecret/blob/main/nacl.go">here</a>.</p>
 <h2 id="storing-the-secret">Storing The Secret</h2>
 <p>Now that we&rsquo;ve encrypted our secret, we&rsquo;re ready to <a href="https://developer.github.com/v3/actions/secrets/#create-or-update-a-repository-secret">store it</a>. In the request body, specify the <code>encrypted_value</code> and the <code>key_id</code> of the public key we obtained from the repository.</p>
 <h2 id="package">Package</h2>
 <p>This code is available as a Go package on <a href="https://github.com/jefflinse/githubsecret">GitHub</a>.</p>
-<div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-bash" data-lang="bash">go get github.com/jefflinse/githubsecret
-</code></pre></div><div class="highlight"><pre style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-go" data-lang="go"><span style="color:#007020;font-weight:bold">import</span> (
-    <span style="color:#4070a0">&#34;fmt&#34;</span>
-    <span style="color:#4070a0">&#34;log&#34;</span>
-    <span style="color:#4070a0">&#34;github.com/jefflinse/githubsecret&#34;</span>
-)
-
-<span style="color:#007020;font-weight:bold">func</span> <span style="color:#06287e">main</span>() {
-    publicKey <span style="color:#666">:=</span> <span style="color:#4070a0">&#34;jpEqkF3JrT+00cEQdpTAUnVWYdJJpkbghDSTndgRJKg=&#34;</span>
-    secret <span style="color:#666">:=</span> <span style="color:#4070a0">&#34;my super sensitive value&#34;</span>
-    encrypted, err <span style="color:#666">:=</span> githubsecret.<span style="color:#06287e">Encrypt</span>(publicKey, secret)
-    <span style="color:#007020;font-weight:bold">if</span> err <span style="color:#666">!=</span> <span style="color:#007020;font-weight:bold">nil</span> {
-        log.<span style="color:#06287e">Fatal</span>(err)
-    }
-
-    fmt.<span style="color:#06287e">Println</span>(encrypted)
-}
-</code></pre></div><section class="footnotes" role="doc-endnotes">
+<div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-bash" data-lang="bash"><span style="display:flex;"><span>go get github.com/jefflinse/githubsecret
+</span></span></code></pre></div><div class="highlight"><pre tabindex="0" style="background-color:#f0f0f0;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-go" data-lang="go"><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">import</span> (
+</span></span><span style="display:flex;"><span>    <span style="color:#4070a0">&#34;fmt&#34;</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#4070a0">&#34;log&#34;</span>
+</span></span><span style="display:flex;"><span>    <span style="color:#4070a0">&#34;github.com/jefflinse/githubsecret&#34;</span>
+</span></span><span style="display:flex;"><span>)
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span><span style="color:#007020;font-weight:bold">func</span> <span style="color:#06287e">main</span>() {
+</span></span><span style="display:flex;"><span>    publicKey <span style="color:#666">:=</span> <span style="color:#4070a0">&#34;jpEqkF3JrT+00cEQdpTAUnVWYdJJpkbghDSTndgRJKg=&#34;</span>
+</span></span><span style="display:flex;"><span>    secret <span style="color:#666">:=</span> <span style="color:#4070a0">&#34;my super sensitive value&#34;</span>
+</span></span><span style="display:flex;"><span>    encrypted, err <span style="color:#666">:=</span> githubsecret.<span style="color:#06287e">Encrypt</span>(publicKey, secret)
+</span></span><span style="display:flex;"><span>    <span style="color:#007020;font-weight:bold">if</span> err <span style="color:#666">!=</span> <span style="color:#007020;font-weight:bold">nil</span> {
+</span></span><span style="display:flex;"><span>        log.<span style="color:#06287e">Fatal</span>(err)
+</span></span><span style="display:flex;"><span>    }
+</span></span><span style="display:flex;"><span>
+</span></span><span style="display:flex;"><span>    fmt.<span style="color:#06287e">Println</span>(encrypted)
+</span></span><span style="display:flex;"><span>}
+</span></span></code></pre></div><div class="footnotes" role="doc-endnotes">
 <hr>
 <ol>
-<li id="fn:1" role="doc-endnote">
+<li id="fn:1">
 <p><a href="https://github.com/GoKillers/libsodium-go">libsodium-go</a> and <a href="https://github.com/jamesruan/sodium">Sodium</a>, from <a href="https://libsodium.gitbook.io/doc/bindings_for_other_languages">libsodium&rsquo;s &ldquo;Bindings for other languages&rdquo;</a>&#160;<a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
 </li>
-<li id="fn:2" role="doc-endnote">
+<li id="fn:2">
 <p>GitHub secrets can also be set at the organization level. The endpoints differ slightly but the workflow is the same.&#160;<a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
 </li>
 </ol>
-</section>
+</div>
 
       </div>
 
